@@ -36,15 +36,18 @@ export function useTTS() {
         throw new Error(`TTS failed (${response.status}): ${err}`);
       }
 
+      // Some mobile browsers may not expose a streaming body; fall back to a
+      // single arrayBuffer read so audio still plays.
       if (!response.body) {
-        throw new Error("TTS response did not include a readable stream body.");
-      }
-
-      const reader = response.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) opts.onChunk(value);
+        const buf = await response.arrayBuffer();
+        opts.onChunk(new Uint8Array(buf));
+      } else {
+        const reader = response.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) opts.onChunk(value);
+        }
       }
     } finally {
       speakingRef.current = false;

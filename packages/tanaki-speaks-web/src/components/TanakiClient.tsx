@@ -51,6 +51,7 @@ function TanakiExperience() {
   const lastSpokenIdRef = useRef<string | null>(null);
   const scrollBottomRef = useRef<HTMLDivElement | null>(null);
   const [blend, setBlend] = useState(0);
+  const unlockedOnceRef = useRef(false);
 
   const statusText = useMemo(() => {
     return connected ? "connected" : "connecting…";
@@ -155,7 +156,20 @@ function TanakiExperience() {
   }, [messages]);
 
   return (
-    <div style={{ height: "100dvh", width: "100%", position: "relative" }}>
+    <div
+      style={{ height: "100dvh", width: "100%", position: "relative" }}
+      onPointerDownCapture={() => {
+        if (unlockedOnceRef.current) return;
+        unlockedOnceRef.current = true;
+        void audioRef.current?.unlock();
+      }}
+      onTouchStartCapture={() => {
+        // iOS Safari sometimes prefers a touch event specifically.
+        if (unlockedOnceRef.current) return;
+        unlockedOnceRef.current = true;
+        void audioRef.current?.unlock();
+      }}
+    >
       <Scene
         showControls={false}
         camera={{

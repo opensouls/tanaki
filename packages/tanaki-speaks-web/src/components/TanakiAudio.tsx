@@ -39,6 +39,7 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
     const audioSourcesRef = useRef<AudioBufferSourceNode[]>([]);
     const remainderRef = useRef<Uint8Array | null>(null);
     const onVolumeChangeRef = useRef(onVolumeChange);
+    const pendingChunksRef = useRef<Uint8Array[]>([]);
 
     useEffect(() => {
       onVolumeChangeRef.current = onVolumeChange;
@@ -47,29 +48,71 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
     const setupAudio = useCallback(async () => {
       if (audioContextRef.current) return;
 
-      const audioContext = new AudioContext({ sampleRate });
-      audioContextRef.current = audioContext;
-      nextPlayTimeRef.current = 0;
+      try {
+        const audioContext = new AudioContext({ sampleRate });
+        audioContextRef.current = audioContext;
+        nextPlayTimeRef.current = 0;
 
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.connect(audioContext.destination);
-      analyserRef.current = analyser;
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.connect(audioContext.destination);
+        analyserRef.current = analyser;
 
-      if (onVolumeChangeRef.current) {
-        const dataArray = new Float32Array(analyser.fftSize);
-        const tick = () => {
-          analyser.getFloatTimeDomainData(dataArray);
-          let sumSquares = 0.0;
-          for (const sample of dataArray) sumSquares += sample * sample;
-          const rms = Math.sqrt(sumSquares / dataArray.length);
-          const volume = Math.min(1.0, rms * 5);
-          onVolumeChangeRef.current?.(volume);
-          animationFrameIdRef.current = requestAnimationFrame(tick);
-        };
-        tick();
+        if (onVolumeChangeRef.current) {
+          const dataArray = new Float32Array(analyser.fftSize);
+          const tick = () => {
+            analyser.getFloatTimeDomainData(dataArray);
+            let sumSquares = 0.0;
+            for (const sample of dataArray) sumSquares += sample * sample;
+            const rms = Math.sqrt(sumSquares / dataArray.length);
+            const volume = Math.min(1.0, rms * 5);
+            onVolumeChangeRef.current?.(volume);
+            animationFrameIdRef.current = requestAnimationFrame(tick);
+          };
+          tick();
+        }
+      } catch {
+        // Some browsers (notably iOS Safari) may require a user gesture before
+        // AudioContext construction is allowed. We'll retry on unlock().
       }
     }, [sampleRate]);
+
+    const primeAndSyncTimeline = useCallback(async () => {
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
+
+      // If the context was suspended, currentTime may not have advanced yet.
+      // Align scheduling to the resumed clock to avoid "starting in the past".
+      nextPlayTimeRef.current = ctx.currentTime;
+
+      // iOS Safari sometimes needs an actual start() to fully unlock output.
+      try {
+        const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        src.start();
+        // No need to keep this in audioSourcesRef; it's a one-sample prime.
+      } catch {
+        // ignore
+      }
+    }, []);
+
+    const drainPending = useCallback(() => {
+      const ctx = audioContextRef.current;
+      const analyser = analyserRef.current;
+      if (!ctx || !analyser) return;
+      if (ctx.state !== "running") return;
+      if (pendingChunksRef.current.length === 0) return;
+
+      const chunks = pendingChunksRef.current;
+      pendingChunksRef.current = [];
+      for (const chunk of chunks) {
+        // Replay as-if newly received now that audio is running.
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        enqueuePcm16Internal(chunk);
+      }
+    }, []);
 
     const teardownAudio = useCallback(() => {
       if (animationFrameIdRef.current) {
@@ -83,6 +126,7 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
       audioSourcesRef.current = [];
       nextPlayTimeRef.current = 0;
       remainderRef.current = null;
+      pendingChunksRef.current = [];
 
       if (analyserRef.current) {
         try {
@@ -119,7 +163,11 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
           // ignored; some browsers require a user gesture
         }
       }
-    }, [enabled, setupAudio]);
+      if (ctx.state === "running") {
+        await primeAndSyncTimeline();
+        drainPending();
+      }
+    }, [drainPending, enabled, primeAndSyncTimeline, setupAudio]);
 
     const interrupt = useCallback(() => {
       const ctx = audioContextRef.current;
@@ -133,17 +181,12 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
       remainderRef.current = null;
     }, []);
 
-    const enqueuePcm16 = useCallback(
+    const enqueuePcm16Internal = useCallback(
       (chunk: Uint8Array) => {
-        if (!enabled) return;
         const ctx = audioContextRef.current;
         const analyser = analyserRef.current;
         if (!ctx || !analyser) return;
-
-        // Attempt to resume when first audio arrives (may still require user gesture).
-        if (ctx.state !== "running") {
-          void ctx.resume().catch(() => {});
-        }
+        if (ctx.state !== "running") return;
 
         let data = chunk;
         if (remainderRef.current && remainderRef.current.length > 0) {
@@ -189,7 +232,32 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
           audioSourcesRef.current = audioSourcesRef.current.filter((s) => s !== source);
         };
       },
-      [enabled]
+      []
+    );
+
+    const enqueuePcm16 = useCallback(
+      (chunk: Uint8Array) => {
+        if (!enabled) return;
+        const ctx = audioContextRef.current;
+        const analyser = analyserRef.current;
+        if (!ctx || !analyser) {
+          // If AudioContext couldn't be created yet (e.g., iOS needs gesture),
+          // keep buffering and let unlock() construct + drain.
+          pendingChunksRef.current.push(chunk);
+          return;
+        }
+
+        if (ctx.state !== "running") {
+          // Mobile browsers may drop scheduled buffers while suspended, so buffer
+          // until we've been unlocked via user gesture.
+          pendingChunksRef.current.push(chunk);
+          void ctx.resume().catch(() => {});
+          return;
+        }
+
+        enqueuePcm16Internal(chunk);
+      },
+      [enabled, enqueuePcm16Internal]
     );
 
     useImperativeHandle(
