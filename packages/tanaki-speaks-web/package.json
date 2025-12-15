@@ -9,6 +9,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@opensouls/react": "workspace:*",
+    "@opensouls/soul": "workspace:*",
+    "@radix-ui/themes": "^3.2.1",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.2",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-query": "^5.66.5",
@@ -23,6 +28,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.0.6",
+    "three": "^0.182.0",
     "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {
