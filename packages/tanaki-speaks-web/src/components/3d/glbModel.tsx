@@ -18,6 +18,12 @@ export type GLBModelProps = {
   hideNodes?: Array<string | RegExp>;
   logHierarchy?: boolean;
   logAnimations?: boolean;
+  /**
+   * Expose a tiny console API for debugging animations.
+   * - `true` => uses default key `__glbAnimations`
+   * - `"someKey"` => uses `window[someKey]`
+   */
+  exposeAnimationsToWindow?: boolean | string;
   onNodeClick?: (info: { name: string; object: Object3D }) => void;
   logClicks?: boolean;
   materialOverride?: MaterialOverride[];
@@ -48,6 +54,7 @@ export default function GLBModel({
   hideNodes,
   logHierarchy = false,
   logAnimations = false,
+  exposeAnimationsToWindow = false,
   onNodeClick,
   logClicks = false,
   materialOverride,
@@ -155,6 +162,99 @@ export default function GLBModel({
 
     // use , names here to log the actual animation names.
   const { actions } = useAnimations(effectiveClips, groupRef);
+
+  // Optional debug console API for quickly trying clip names.
+  useEffect(() => {
+    if (!exposeAnimationsToWindow) return;
+    if (typeof window === "undefined") return;
+
+    const key =
+      typeof exposeAnimationsToWindow === "string"
+        ? exposeAnimationsToWindow
+        : "__glbAnimations";
+
+    const api = {
+      url,
+      list: () => Object.keys(actions).sort((a, b) => a.localeCompare(b)),
+      stopAll: (fadeOutSec = 0.15) => {
+        for (const a of Object.values(actions)) {
+          if (!a) continue;
+          try {
+            a.fadeOut(fadeOutSec);
+            a.stop();
+          } catch {}
+        }
+      },
+      stop: (name: string, fadeOutSec = 0.15) => {
+        const a = actions[name];
+        if (!a) return;
+        try {
+          a.fadeOut(fadeOutSec);
+          a.stop();
+        } catch {}
+      },
+      play: (
+        name: string,
+        opts?: {
+          exclusive?: boolean;
+          fadeInSec?: number;
+          loop?: "once" | "repeat";
+          repetitions?: number;
+          timeScale?: number;
+          clampWhenFinished?: boolean;
+        }
+      ) => {
+        const a = actions[name];
+        if (!a) {
+          console.warn(`[GLBModel] unknown animation: ${name}`, {
+            available: Object.keys(actions),
+          });
+          return;
+        }
+
+        const exclusive = opts?.exclusive ?? true;
+        const fadeInSec = opts?.fadeInSec ?? 0.15;
+        const loop = opts?.loop ?? "repeat";
+        const repetitions = opts?.repetitions ?? Infinity;
+        const timeScale = opts?.timeScale ?? 1;
+        const clampWhenFinished = opts?.clampWhenFinished ?? loop === "once";
+
+        if (exclusive) {
+          for (const other of Object.values(actions)) {
+            if (!other || other === a) continue;
+            try {
+              other.fadeOut(0.1);
+              other.stop();
+            } catch {}
+          }
+        }
+
+        a.enabled = true;
+        a.timeScale = timeScale;
+        if (loop === "once") {
+          a.setLoop(THREE.LoopOnce, 0);
+        } else {
+          a.setLoop(THREE.LoopRepeat, repetitions);
+        }
+        a.clampWhenFinished = clampWhenFinished;
+
+        a.reset().fadeIn(fadeInSec).play();
+      },
+      // For deep inspection in devtools
+      actions,
+    } as const;
+
+    (window as any)[key] = api;
+    console.log(
+      `[GLBModel] Exposed animation controls at window.${key} (try: window.${key}.list(), window.${key}.play("..."))`
+    );
+
+    return () => {
+      try {
+        if ((window as any)[key] === api) delete (window as any)[key];
+      } catch {}
+    };
+  }, [actions, exposeAnimationsToWindow, url]);
 
   useEffect(() => {
     if (!autoPlayAnimation || !effectiveAnimationName) {

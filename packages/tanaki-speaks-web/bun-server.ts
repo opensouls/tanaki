@@ -5,6 +5,7 @@ type WsData = {
   org?: string;
   channel?: string;
   upstreamUrl?: string;
+  upstreamProtocol?: string;
   upstream?: WebSocket;
 };
 
@@ -119,12 +120,22 @@ async function proxyToVite(req: Request): Promise<Response> {
   const headers = new Headers(req.headers);
   headers.set("host", upstreamUrl.host);
 
-  const upstream = await fetch(upstreamUrl, {
-    method: req.method,
-    headers,
-    body: req.body,
-    redirect: "manual",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: req.method,
+      headers,
+      body: req.body,
+      redirect: "manual",
+    });
+  } catch (err: any) {
+    // In dev, browser refreshes frequently cancel in-flight requests; if the upstream
+    // socket gets reset, don't take down the proxy.
+    const code = typeof err?.code === "string" ? err.code : "";
+    const message = err?.message ? String(err.message) : "Upstream fetch failed";
+    const status = code === "ECONNRESET" ? 502 : 502;
+    return jsonError(`${message}${code ? ` (${code})` : ""}`, status);
+  }
 
   // Avoid leaking Vite internal host/port across redirects when browsing via Bun.
   const outHeaders = new Headers(upstream.headers);
@@ -184,7 +195,15 @@ Bun.serve<WsData>({
         const base = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173";
         const wsBase = toWsUrl(base);
         const upstreamUrl = `${wsBase}${url.pathname}${url.search}`;
-        const ok = server.upgrade(req, { data: { kind: "vite", upstreamUrl } });
+        // Vite HMR uses the "vite-hmr" websocket subprotocol; forward it upstream.
+        const upstreamProtocol =
+          (req.headers.get("sec-websocket-protocol") || "")
+            .split(",")[0]
+            ?.trim() || undefined;
+
+        const ok = server.upgrade(req, {
+          data: { kind: "vite", upstreamUrl, upstreamProtocol },
+        });
         return ok ? new Response(null, { status: 101 }) : new Response("Upgrade failed", { status: 400 });
       }
       return proxyToVite(req);
@@ -234,7 +253,8 @@ Bun.serve<WsData>({
         return;
       }
 
-      const upstream = new WebSocket(upstreamUrl);
+      const protocol = ws.data.upstreamProtocol;
+      const upstream = protocol ? new WebSocket(upstreamUrl, protocol) : new WebSocket(upstreamUrl);
       upstream.binaryType = "arraybuffer";
       ws.data.upstream = upstream;
 

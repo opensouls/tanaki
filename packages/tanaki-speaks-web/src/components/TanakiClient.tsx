@@ -206,6 +206,7 @@ function TanakiExperience() {
           position={[0, 0, 0]}
           animationName="Tanaki_Floating_idle_117"
           logAnimations={import.meta.env.DEV}
+          exposeAnimationsToWindow={import.meta.env.DEV ? "__tanakiAnimations" : false}
           poseBlend={{
             clipName: "Tanaki_Phonemes",
             fromIndex: 1,
