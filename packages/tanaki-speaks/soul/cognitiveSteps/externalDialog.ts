@@ -21,6 +21,7 @@ const externalDialog = createCognitiveStep((instructions: string | { instruction
             * DO NOT include actions (for example, do NOT add non-verbal items like *John Smiles* or *John Nods*, etc).
             * DO NOT include filler words like "ehhh" or "ummm"
             * DO NOT include internal thoughts (for example, do NOT respond with John thought: "...").
+            * Keep responses short, they will be said outloud.
             * If necessary, use all CAPS to emphasize certain words.
     
             ${instructionString}

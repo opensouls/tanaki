@@ -1,5 +1,5 @@
 
-import { MentalProcess, useActions } from "@opensouls/engine";
+import { MentalProcess, useActions, indentNicely } from "@opensouls/engine";
 import externalDialog from "./cognitiveSteps/externalDialog.ts";
 
 const initialProcess: MentalProcess = async ({ workingMemory }) => {
@@ -7,8 +7,10 @@ const initialProcess: MentalProcess = async ({ workingMemory }) => {
 
   const [withDialog, stream] = await externalDialog(
     workingMemory,
-    "Talk to the user trying to gain trust and learn about their inner world.",
-    { stream: true, model: "gpt-5-mini" }
+    indentNicely`
+      Keep the conversation moving, keep the guest delighted and engaged. If the conversation is becoming repeitive or you predict it will end soon, ask a question that will keep the guest engaged: Health, Hobbies, Food, Travel, etc.
+    `,
+    { stream: true, model: "gpt-5.2" }
   );
   speak(stream);
 

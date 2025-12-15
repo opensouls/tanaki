@@ -56,7 +56,7 @@ async function handleTts(req: Request): Promise<Response> {
 
   const text = typeof (body as any)?.text === "string" ? (body as any).text : "";
   const voice =
-    typeof (body as any)?.voice === "string" ? (body as any).voice : "sage";
+    typeof (body as any)?.voice === "string" ? (body as any).voice : "nova";
 
   const trimmed = text.trim();
   if (!trimmed) {
