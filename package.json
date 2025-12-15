@@ -1,0 +1,25 @@
+{
+  "name": "tanaki-open-souls",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.2.23",
+  "workspaces": [
+    "packages/*",
+    "opensouls/packages/*"
+  ],
+  "scripts": {
+    "setup": "bun run opensouls/scripts/setupRepo.ts",
+    "dev:ui": "bun run --cwd opensouls/packages/soul-engine-ui dev",
+    "dev:cloud": "bun run --cwd opensouls/packages/soul-engine-cloud dev",
+    "dev:docs": "bun run --cwd opensouls/packages/beta-docs dev"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "^1.3.4",
+    "concurrently": "^9.0.1",
+    "eslint": "^8.48.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
