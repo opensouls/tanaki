@@ -17,9 +17,12 @@ COPY opensouls/packages/react/package.json opensouls/packages/react/
 COPY opensouls/packages/pipeline/package.json opensouls/packages/pipeline/
 COPY opensouls/packages/cli/package.json opensouls/packages/cli/
 COPY opensouls/packages/soul-engine-cloud/package.json opensouls/packages/soul-engine-cloud/
+# `soul-engine-cloud` depends on `soul-engine` via `file:./frozen-npm/soul-engine`,
+# so we must include that directory in the build context before `bun install`.
+COPY opensouls/packages/soul-engine-cloud/frozen-npm/soul-engine/ opensouls/packages/soul-engine-cloud/frozen-npm/soul-engine/
 COPY packages/tanaki-speaks/package.json packages/tanaki-speaks/
 COPY packages/tanaki-speaks-web/package.json packages/tanaki-speaks-web/
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Build, warm caches, and prepare soul + frontend
 FROM deps AS builder
