@@ -3,9 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 3002",
+    "dev": "bun run scripts/dev.ts",
+    "dev:ui": "vite dev --port 5173 --strictPort",
+    "dev:server": "DEV=1 VITE_DEV_SERVER_URL=http://127.0.0.1:5173 PORT=3002 bun --hot ./bun-server.ts",
     "build": "vite build",
     "preview": "vite preview --port 3002",
+    "start": "bun run ./bun-server.ts",
     "test": "vitest run"
   },
   "dependencies": {

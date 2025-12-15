@@ -12,13 +12,6 @@ function randomId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function readBoolEnv(value: unknown, fallback: boolean): boolean {
-  if (typeof value !== "string") return fallback;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return fallback;
-}
-
 export function useTanakiSoul() {
   const organization = "local";
   const local = true;
@@ -71,5 +64,3 @@ export function useTanakiSoul() {
     };
   }, [organization, local, soul, connected, messages]);
 }
-
-

@@ -9,6 +9,22 @@ bun install
 bun --bun run start
 ```
 
+## Local Dev (HMR + Bun API/Ws proxy)
+
+For local editing with live reload, run:
+
+```bash
+cd packages/tanaki-speaks-web
+bun dev
+```
+
+Then open `http://localhost:3002`.
+
+- The Bun server on `:3002` handles:
+  - `POST /api/tts` (server-side OpenAI call)
+  - `WS /ws/soul/:org/:channel` (proxy to the local soul-engine)
+- Everything else (HTML, JS, assets, and Vite HMR websockets) is proxied to Vite on `:5173`.
+
 # Building For Production
 
 To build this application for production:
