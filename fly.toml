@@ -15,8 +15,7 @@ primary_region = "iad"
     interval = "15s"
     timeout = "2s"
     grace_period = "10s"
-    method = "GET"
-    path = "/"
+    type = "tcp"
 
 [[vm]]
   memory = "1gb"
