@@ -1,10 +1,13 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { TanStackDevtools } from '@tanstack/react-devtools'
+import '@radix-ui/themes/styles.css'
+import { Box, Button, Theme } from '@radix-ui/themes'
+import { Suspense, lazy } from 'react'
 
-import Header from '../components/Header'
+import { ClientOnly } from '../components/ClientOnly'
 
 import appCss from '../styles.css?url'
+
+const DevtoolsClient = lazy(() => import('../components/DevtoolsClient'))
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,7 +20,7 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: 'Tanaki',
       },
     ],
     links: [
@@ -29,30 +32,46 @@ export const Route = createRootRoute({
   }),
 
   shellComponent: RootDocument,
+  notFoundComponent: NotFound,
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark-theme dark" style={{ colorScheme: 'dark' }}>
       <head>
         <HeadContent />
       </head>
       <body>
-        <Header />
-        {children}
-        <TanStackDevtools
-          config={{
-            position: 'bottom-right',
-          }}
-          plugins={[
-            {
-              name: 'Tanstack Router',
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-          ]}
-        />
+        <Theme
+          appearance="dark"
+          accentColor="iris"
+          grayColor="slate"
+          panelBackground="solid"
+          radius="small"
+        >
+          {children}
+        </Theme>
+        <ClientOnly>
+          <Suspense fallback={null}>
+            <DevtoolsClient />
+          </Suspense>
+        </ClientOnly>
         <Scripts />
       </body>
     </html>
+  )
+}
+
+function NotFound() {
+  return (
+    <Box className="min-h-screen flex flex-col items-center justify-center gap-4 p-6">
+      <Box className="text-center">
+        <h1 className="text-2xl font-semibold">Not Found</h1>
+        <p className="text-sm opacity-80">That page doesn’t exist.</p>
+      </Box>
+      <Button asChild>
+        <a href="/">Go home</a>
+      </Button>
+    </Box>
   )
 }
