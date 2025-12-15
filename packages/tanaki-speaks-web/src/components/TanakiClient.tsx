@@ -45,7 +45,7 @@ export default function TanakiClient() {
 }
 
 function TanakiExperience() {
-  const { connected, messages, send } = useTanakiSoul();
+  const { connected, messages, send, connectedUsers } = useTanakiSoul();
   const { speak } = useTTS();
   const audioRef = useRef<TanakiAudioHandle | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -247,9 +247,16 @@ function TanakiExperience() {
         }}
       >
         <Flex justify="between" align="center" className="mb-2" gap="3">
-          <Text size="2">
-            {statusIndicator}
-          </Text>
+          <Flex align="center" gap="2">
+            <Text size="2">
+              {statusIndicator}
+            </Text>
+            {connectedUsers > 0 && (
+              <Text size="1" color="gray" style={{ opacity: 0.7 }}>
+                {connectedUsers} {connectedUsers === 1 ? "person" : "people"} here
+              </Text>
+            )}
+          </Flex>
           <Text size="2" color="gray">
             tanaki
           </Text>

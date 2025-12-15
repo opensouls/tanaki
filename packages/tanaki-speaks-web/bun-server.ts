@@ -1,13 +1,36 @@
 import { join, normalize } from "node:path";
+import type { ServerWebSocket } from "bun";
 
 type WsData = {
-  kind: "soul" | "vite";
+  kind: "soul" | "vite" | "presence";
   org?: string;
   channel?: string;
   upstreamUrl?: string;
   upstreamProtocol?: string;
   upstream?: WebSocket;
 };
+
+// Track connected users by their WebSocket
+const connectedPresenceClients = new Set<ServerWebSocket<WsData>>();
+
+function getConnectedUserCount(): number {
+  return connectedPresenceClients.size;
+}
+
+function broadcastUserCount(): void {
+  const count = getConnectedUserCount();
+  const message = JSON.stringify({ type: "userCount", count });
+  
+  for (const ws of connectedPresenceClients) {
+    try {
+      ws.send(message);
+    } catch {
+      // ignore send errors
+    }
+  }
+  
+  console.log(`[presence] Broadcasting user count: ${count}`);
+}
 
 function isWebSocketRequest(req: Request): boolean {
   return (req.headers.get("upgrade") || "").toLowerCase() === "websocket";
@@ -169,6 +192,23 @@ Bun.serve<WsData>({
     const url = new URL(req.url);
     const dev = isDev();
 
+    // Presence WebSocket for tracking connected users
+    if (url.pathname === "/ws/presence") {
+      if (!isWebSocketRequest(req)) {
+        return new Response("Expected WebSocket upgrade", { status: 426 });
+      }
+      
+      const ok = server.upgrade(req, { data: { kind: "presence" } });
+      return ok ? new Response(null, { status: 101 }) : new Response("Upgrade failed", { status: 400 });
+    }
+
+    // API endpoint to get current user count
+    if (url.pathname === "/api/presence" && req.method === "GET") {
+      return new Response(JSON.stringify({ connectedUsers: getConnectedUserCount() }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // WebSocket proxy to internal soul-engine.
     // /ws/soul/:org/:channel -> ws://127.0.0.1:4000/:org/:channel
     if (url.pathname.startsWith("/ws/soul/")) {
@@ -232,6 +272,19 @@ Bun.serve<WsData>({
   },
   websocket: {
     open: (ws) => {
+      // Handle presence connections
+      if (ws.data.kind === "presence") {
+        connectedPresenceClients.add(ws);
+        console.log(`[presence] User connected`);
+        
+        // Send current count to the new connection
+        ws.send(JSON.stringify({ type: "userCount", count: getConnectedUserCount() }));
+        
+        // Broadcast updated count to all
+        broadcastUserCount();
+        return;
+      }
+
       let upstreamUrl: string | undefined;
 
       if (ws.data.kind === "soul") {
@@ -277,11 +330,24 @@ Bun.serve<WsData>({
       });
     },
     message: (ws, message) => {
+      // Handle presence pings
+      if (ws.data.kind === "presence") {
+        return;
+      }
+
       const upstream = ws.data.upstream;
       if (!upstream || upstream.readyState !== WebSocket.OPEN) return;
       upstream.send(message as any);
     },
     close: (ws) => {
+      // Handle presence disconnections
+      if (ws.data.kind === "presence") {
+        connectedPresenceClients.delete(ws);
+        console.log(`[presence] User disconnected`);
+        broadcastUserCount();
+        return;
+      }
+
       try {
         ws.data.upstream?.close();
       } catch {
@@ -292,5 +358,3 @@ Bun.serve<WsData>({
 });
 
 console.log(`[web] listening on :${port} (serving ${distDir})`);
-
-
