@@ -56,6 +56,13 @@ function TanakiExperience() {
   const [overlayHeight, setOverlayHeight] = useState(240);
   const [liveText, setLiveText] = useState("");
 
+  const enableAnimationDebug = useMemo(() => {
+    if (import.meta.env.DEV) return true;
+    if (typeof window === "undefined") return false;
+    const qs = new URLSearchParams(window.location.search);
+    return qs.has("debugAnimations");
+  }, []);
+
   const unlockOnce = useCallback(() => {
     if (unlockedOnceRef.current) return;
     unlockedOnceRef.current = true;
@@ -205,8 +212,8 @@ function TanakiExperience() {
           url="/Tanaki-anim-web-v1.glb"
           position={[0, 0, 0]}
           animationName="Tanaki_Floating_idle_117"
-          logAnimations={import.meta.env.DEV}
-          exposeAnimationsToWindow={import.meta.env.DEV ? "__tanakiAnimations" : false}
+          logAnimations={enableAnimationDebug}
+          exposeAnimationsToWindow={enableAnimationDebug ? "__tanakiAnimations" : false}
           poseBlend={{
             clipName: "Tanaki_Phonemes",
             fromIndex: 1,
