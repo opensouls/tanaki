@@ -10,7 +10,6 @@
   "framework": "react-cra",
   "chosenAddOns": [
     "nitro",
-    "start",
-    "tanstack-query"
+    "start"
   ]
 }
