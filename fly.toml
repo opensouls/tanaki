@@ -22,4 +22,8 @@ primary_region = "iad"
   cpu_kind = "performance"
   cpus = 2
 
+[metrics]
+  port = 9091
+  path = "/metrics"
+
 

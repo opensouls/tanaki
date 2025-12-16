@@ -1,5 +1,13 @@
 import { join, normalize } from "node:path";
 import type { ServerWebSocket } from "bun";
+import {
+  incPresenceBroadcast,
+  incWsConnection,
+  incWsMessage,
+  metricsResponse,
+  setConnectedUsers,
+  type WsKind,
+} from "./src/server/prometheus.ts";
 
 type WsData = {
   kind: "soul" | "vite" | "presence";
@@ -24,10 +32,12 @@ function broadcastUserCount(): void {
   for (const ws of connectedPresenceClients) {
     try {
       ws.send(message);
+      incWsMessage("presence", "server_to_client", message);
     } catch {
       // ignore send errors
     }
   }
+  if (connectedPresenceClients.size > 0) incPresenceBroadcast();
   
   console.log(`[presence] Broadcasting user count: ${count}`);
 }
@@ -119,12 +129,31 @@ async function proxyToVite(req: Request): Promise<Response> {
 }
 
 const port = Number.parseInt(process.env.PORT || "3002", 10);
+const metricsPort = Number.parseInt(
+  process.env.METRICS_PORT || (isDev() ? "9092" : "9091"),
+  10,
+);
 const distDir = join(import.meta.dir, "dist");
 const indexPath = join(distDir, "index.html");
 const indexFile = Bun.file(indexPath);
 
+// Ensure the gauge is exported even before any clients connect.
+setConnectedUsers(0);
+
+// Fly scrapes Prometheus-formatted metrics from this dedicated port.
+Bun.serve({
+  port: metricsPort,
+  hostname: "0.0.0.0",
+  fetch: async (req) => {
+    const url = new URL(req.url);
+    if (url.pathname === "/metrics") return metricsResponse();
+    return new Response("Not found", { status: 404 });
+  },
+});
+
 Bun.serve<WsData>({
   port,
+  hostname: "0.0.0.0",
   fetch: async (req, server) => {
     const url = new URL(req.url);
     const dev = isDev();
@@ -213,10 +242,14 @@ Bun.serve<WsData>({
       // Handle presence connections
       if (ws.data.kind === "presence") {
         connectedPresenceClients.add(ws);
+        setConnectedUsers(getConnectedUserCount());
+        incWsConnection("presence");
         console.log(`[presence] User connected`);
         
         // Send current count to the new connection
-        ws.send(JSON.stringify({ type: "userCount", count: getConnectedUserCount() }));
+        const initial = JSON.stringify({ type: "userCount", count: getConnectedUserCount() });
+        ws.send(initial);
+        incWsMessage("presence", "server_to_client", initial);
         
         // Broadcast updated count to all
         broadcastUserCount();
@@ -251,6 +284,7 @@ Bun.serve<WsData>({
 
       upstream.addEventListener("message", (evt) => {
         ws.send(evt.data);
+        incWsMessage(ws.data.kind as WsKind, "upstream_to_client", evt.data);
       });
       upstream.addEventListener("close", () => {
         try {
@@ -266,6 +300,8 @@ Bun.serve<WsData>({
           // ignore
         }
       });
+
+      incWsConnection(ws.data.kind as WsKind);
     },
     message: (ws, message) => {
       // Handle presence pings
@@ -276,11 +312,13 @@ Bun.serve<WsData>({
       const upstream = ws.data.upstream;
       if (!upstream || upstream.readyState !== WebSocket.OPEN) return;
       upstream.send(message as any);
+      incWsMessage(ws.data.kind as WsKind, "client_to_upstream", message);
     },
     close: (ws) => {
       // Handle presence disconnections
       if (ws.data.kind === "presence") {
         connectedPresenceClients.delete(ws);
+        setConnectedUsers(getConnectedUserCount());
         console.log(`[presence] User disconnected`);
         broadcastUserCount();
         return;
@@ -296,3 +334,4 @@ Bun.serve<WsData>({
 });
 
 console.log(`[web] listening on :${port} (serving ${distDir})`);
+console.log(`[metrics] listening on :${metricsPort} (/metrics)`);

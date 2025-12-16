@@ -55,6 +55,12 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
     { enabled, onVolumeChange }: TanakiAudioProps,
     ref
   ) {
+    // A small lead-time buffer helps avoid first-buffer glitches where the first
+    // chunk is scheduled "too close to now" (especially right after resume()).
+    const initialStartBufferSecRef = useRef(0.18);
+    const startSafetyLeadSecRef = useRef(0.02);
+    const fadeInSecRef = useRef(0.01);
+
     // Server currently streams PCM16 mono at 24kHz.
     const inputSampleRateRef = useRef(24000);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -65,6 +71,7 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
     const remainderRef = useRef<Uint8Array | null>(null);
     const onVolumeChangeRef = useRef(onVolumeChange);
     const pendingChunksRef = useRef<Uint8Array[]>([]);
+    const needsInitialBufferRef = useRef(true);
 
     useEffect(() => {
       onVolumeChangeRef.current = onVolumeChange;
@@ -80,6 +87,7 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
         const audioContext = new AudioContext();
         audioContextRef.current = audioContext;
         nextPlayTimeRef.current = 0;
+        needsInitialBufferRef.current = true;
 
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 512;
@@ -112,6 +120,7 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
       // If the context was suspended, currentTime may not have advanced yet.
       // Align scheduling to the resumed clock to avoid "starting in the past".
       nextPlayTimeRef.current = ctx.currentTime;
+      needsInitialBufferRef.current = true;
 
       // iOS Safari sometimes needs an actual start() to fully unlock output.
       try {
@@ -139,6 +148,7 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
       nextPlayTimeRef.current = 0;
       remainderRef.current = null;
       pendingChunksRef.current = [];
+      needsInitialBufferRef.current = true;
 
       if (analyserRef.current) {
         try {
@@ -211,6 +221,7 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
         audioSourcesRef.current = [];
       }
       remainderRef.current = null;
+      needsInitialBufferRef.current = true;
     }, []);
 
     const enqueuePcm16Internal = useCallback(
@@ -259,11 +270,38 @@ export const TanakiAudio = forwardRef<TanakiAudioHandle, TanakiAudioProps>(
 
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(analyser);
 
         const now = ctx.currentTime;
-        if (nextPlayTimeRef.current < now) nextPlayTimeRef.current = now;
-        source.start(nextPlayTimeRef.current);
+        // Never schedule "in the past", and add a small lead time so the browser
+        // has time to actually start the first buffer cleanly.
+        const safetyLead = startSafetyLeadSecRef.current;
+        const initialBuffer = initialStartBufferSecRef.current;
+        const targetNow = now + safetyLead;
+        if (nextPlayTimeRef.current < targetNow) nextPlayTimeRef.current = targetNow;
+
+        const isFirstAfterReset = needsInitialBufferRef.current;
+        if (isFirstAfterReset) {
+          const initialTarget = now + initialBuffer;
+          if (nextPlayTimeRef.current < initialTarget) nextPlayTimeRef.current = initialTarget;
+          needsInitialBufferRef.current = false;
+        }
+
+        const startTime = nextPlayTimeRef.current;
+
+        // Short fade-in on the first buffer avoids a click/pop if the PCM starts
+        // away from zero crossing.
+        if (isFirstAfterReset) {
+          const g = ctx.createGain();
+          const fade = fadeInSecRef.current;
+          g.gain.setValueAtTime(0, startTime);
+          g.gain.linearRampToValueAtTime(1, startTime + fade);
+          source.connect(g);
+          g.connect(analyser);
+        } else {
+          source.connect(analyser);
+        }
+
+        source.start(startTime);
         nextPlayTimeRef.current += audioBuffer.duration;
 
         audioSourcesRef.current.push(source);

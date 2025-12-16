@@ -49,6 +49,7 @@ RUN mkdir -p /app/data /app/data/pglite
 
 WORKDIR /app/packages/tanaki-speaks-web
 EXPOSE 3002
+EXPOSE 9091
 
 CMD ["bash", "/app/packages/tanaki-speaks-web/start.sh"]
 
