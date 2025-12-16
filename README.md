@@ -1,6 +1,10 @@
-# tanaki-open-souls
+# Tanaki
 
-Tanaki is a conversational “AI soul” (personality + cognition) running on the OpenSouls Soul Engine, with a web frontend that renders a 3D Tanaki avatar and plays real-time TTS audio.
+The original Open Soul.
+
+Tanaki is a playful animated noodle living on a web page. Visitors type messages, and Tanaki responds out loud through a wiggly noodle mouth. He’s a friendly “spirit of creativity” who hosts the vibe (even with multiple people chatting at once), speaking to encourage kindness, creativity, and collaboration.
+
+Tanaki is a conversational AI soul (personality + cognition) running on the OpenSouls Soul Engine, with a web frontend that renders a 3D Tanaki avatar and plays real-time TTS audio.
 
 If you want to learn the Soul Engine itself, start here: [opensouls/opensouls](https://github.com/opensouls/opensouls).
 
