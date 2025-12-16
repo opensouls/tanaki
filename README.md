@@ -157,6 +157,71 @@ sequenceDiagram
 
 ---
 
+### Deploying on Fly.io (`fly.toml` + `Dockerfile`)
+
+This repo is set up to deploy a **single container** to Fly that runs:
+- The **Soul Engine** (internal-only, listens on `127.0.0.1:4000`)
+- The **Tanaki web server** (public, listens on `0.0.0.0:3002`)
+- A **Prometheus metrics** server (scraped by Fly, listens on `0.0.0.0:9091`)
+
+#### What `fly.toml` does
+
+- **Build**: uses the repo `Dockerfile`
+- **Public HTTP**: routes Fly traffic to `internal_port = 3002`
+- **Metrics**: scrapes `http://<machine>:9091/metrics`
+
+See: `fly.toml`
+
+#### What the `Dockerfile` does
+
+`Dockerfile` is a multi-stage Bun build that:
+- Installs workspace deps (including `opensouls/` packages)
+- Builds the web app (`packages/tanaki-speaks-web`)
+- Generates Prisma client for the engine (`opensouls/packages/soul-engine-cloud`)
+- Warms the HuggingFace embedding model cache into `HF_HOME` (so first boot is faster)
+
+At runtime it executes `packages/tanaki-speaks-web/start.sh`.
+
+#### Runtime boot flow (`start.sh`)
+
+```mermaid
+flowchart TD
+  A[Container start] --> B[start.sh]
+  B --> C[Start Soul Engine cloud server\nopensouls/packages/soul-engine-cloud\nbun run scripts/run-server.ts /app/data]
+  B --> D{First boot?\n/app/data/.tanaki-speaks-installed}
+  D -->|no| E[Register blueprint once\npackages/tanaki-speaks\nlocal CLI dev --once --noopen]
+  D -->|yes| F[Skip registration]
+  E --> G[Start web server\npackages/tanaki-speaks-web\nbun run bun-server.ts]
+  F --> G
+```
+
+The web server (`packages/tanaki-speaks-web/bun-server.ts`) proxies browser websocket connections from:
+- `/ws/soul/:org/:channel` → `ws://127.0.0.1:4000/:org/:channel`
+
+So on Fly the Soul Engine does **not** need to be publicly exposed; it stays inside the same container.
+
+#### Required secrets
+
+At minimum, TTS requires:
+
+```bash
+fly secrets set OPENAI_API_KEY=...
+```
+
+Optional (depending on which models/providers you use in your engine setup):
+
+```bash
+fly secrets set ANTHROPIC_API_KEY=...
+```
+
+#### Persistence note (recommended)
+
+The container stores pglite + blueprint install markers under `CODE_PATH` (defaults to `/app/data`) and pglite under `PGLITE_DATA_DIR` (defaults to `/app/data/pglite`) via `packages/tanaki-speaks-web/start.sh`.
+
+If you want conversations/state to survive deploys and machine restarts, mount a Fly volume to `/app/data` (otherwise it’s ephemeral).
+
+---
+
 ### Learn more
 
 - **OpenSouls engine + docs + examples**: [opensouls/opensouls](https://github.com/opensouls/opensouls)
