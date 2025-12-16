@@ -96,15 +96,15 @@ flowchart LR
   user["User (browser)"] -->|types message| webUI["React UI"]
 
   subgraph webApp["Web App (localhost 3002)"]
-    webUI -->|dispatch perception<br/>said("User", text)| reactSDK["@opensouls/react<br/>useSoul()"]
-    reactSDK -->|WS same-origin| bunServer["Bun server<br/>/ws/soul/{org}/{channel}"]
-    presence["Presence WS<br/>/ws/presence"] --> bunServer
+    webUI -->|dispatch: said(User, text)| reactSDK["@opensouls/react useSoul"]
+    reactSDK -->|WS same-origin| bunServer["Bun server /ws/soul/{org}/{channel}"]
+    presence["Presence WS /ws/presence"] --> bunServer
   end
 
-  bunServer -->|WS proxy| soulEngine["Soul Engine<br/>ws://127.0.0.1:4000/{org}/{channel}"]
+  bunServer -->|WS proxy| soulEngine["Soul Engine ws://127.0.0.1:4000/{org}/{channel}"]
 
-  soulEngine -->|says (text)| reactSDK
-  soulEngine -->|ephemeral audio events<br/>audio-chunk / audio-complete| webAudio["TanakiAudio<br/>AudioContext playback"]
+  soulEngine -->|event: says(text)| reactSDK
+  soulEngine -->|events: audio-chunk + audio-complete| webAudio["TanakiAudio AudioContext playback"]
   webAudio -->|volume -> mouth blend| avatar["3D Tanaki avatar"]
 ```
 
@@ -191,11 +191,11 @@ At runtime it executes `packages/tanaki-speaks-web/start.sh`.
 ```mermaid
 flowchart TD
   A["Container start"] --> B["start.sh"]
-  B --> C["Start Soul Engine cloud server<br/>opensouls/packages/soul-engine-cloud<br/>bun run scripts/run-server.ts /app/data"]
-  B --> D{"First boot?<br/>/app/data/.tanaki-speaks-installed"}
-  D -->|no| E["Register blueprint once<br/>packages/tanaki-speaks<br/>local CLI dev --once --noopen"]
+  B --> C["Start Soul Engine server (soul-engine-cloud)"]
+  B --> D{"First boot? .tanaki-speaks-installed"}
+  D -->|no| E["Register blueprint once (tanaki-speaks)"]
   D -->|yes| F["Skip registration"]
-  E --> G["Start web server<br/>packages/tanaki-speaks-web<br/>bun run bun-server.ts"]
+  E --> G["Start web server (tanaki-speaks-web bun-server.ts)"]
   F --> G
 ```
 
