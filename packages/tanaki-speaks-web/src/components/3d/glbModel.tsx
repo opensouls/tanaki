@@ -432,6 +432,6 @@ export default function GLBModel({
   );
 }
 
-useGLTF.preload?.("/Tanaki-anim-web-v1.glb");
+useGLTF.preload?.("/tanaki-animation.glb");
 
 

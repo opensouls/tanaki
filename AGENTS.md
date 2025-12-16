@@ -214,7 +214,7 @@ The `TanakiAudio` component (see `reference-only/components/tanakiAudio.tsx`):
 
 ### 3D Model
 
-The GLB model (`public/Tanaki-anim-web-v1.glb`) includes:
+The GLB model (`public/tanaki-animation.glb`) includes:
 - Idle floating animation
 - Phoneme blend shapes for lip sync
 - Custom procedural gradient materials
