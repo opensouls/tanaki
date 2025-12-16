@@ -315,12 +315,58 @@ function TanakiExperience() {
 }
 
 function ModelLoadingOverlay() {
-  const { active, progress, item } = useProgress();
+  const { active, progress, item, loaded, total } = useProgress();
+  const [simulatedProgress, setSimulatedProgress] = useState(0);
+  const simulationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // When Content-Length header is missing (common with compression), total=0 and
+  // progress stays at 0. In that case, simulate progress to give visual feedback.
+  const hasRealProgress = total > 0;
+
+  useEffect(() => {
+    if (!active) {
+      setSimulatedProgress(0);
+      if (simulationRef.current) {
+        clearInterval(simulationRef.current);
+        simulationRef.current = null;
+      }
+      return;
+    }
+
+    // Only simulate when we don't have real progress
+    if (hasRealProgress) {
+      if (simulationRef.current) {
+        clearInterval(simulationRef.current);
+        simulationRef.current = null;
+      }
+      return;
+    }
+
+    // Simulate progress with diminishing returns (never quite reaches 100)
+    simulationRef.current = setInterval(() => {
+      setSimulatedProgress((prev) => {
+        // Logarithmic approach: fast at start, slows as it nears ~90%
+        const remaining = 90 - prev;
+        if (remaining <= 0) return prev;
+        return prev + remaining * 0.08;
+      });
+    }, 100);
+
+    return () => {
+      if (simulationRef.current) {
+        clearInterval(simulationRef.current);
+        simulationRef.current = null;
+      }
+    };
+  }, [active, hasRealProgress]);
 
   // Show while any three loader is active, but especially helpful for the big GLB.
   if (!active || progress >= 100) return null;
 
-  const pct = Math.max(0, Math.min(100, Math.round(progress)));
+  const pct = hasRealProgress
+    ? Math.max(0, Math.min(100, Math.round(progress)))
+    : Math.max(0, Math.min(100, Math.round(simulatedProgress)));
+
   const label =
     typeof item === "string" && item.length > 0
       ? `Loading ${item.split("/").slice(-1)[0]}…`
