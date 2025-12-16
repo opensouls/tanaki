@@ -66,71 +66,8 @@ function jsonError(message: string, status = 400) {
 }
 
 async function handleTts(req: Request): Promise<Response> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return jsonError("Missing OPENAI_API_KEY on server.", 500);
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError("Invalid JSON body.");
-  }
-
-  const text = typeof (body as any)?.text === "string" ? (body as any).text : "";
-  const voice =
-    typeof (body as any)?.voice === "string" ? (body as any).voice : "shimmer";
-
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return jsonError('Missing "text" in request body.');
-  }
-
-  const upstream = await fetch("https://api.openai.com/v1/audio/speech", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      instructions: `
-Tone: Bright, bubbly, and effervescent, with childlike wonder and infectious optimism. Cheerful and warm, like a friend excited to share a discovery.
-
-Emotion: Pure creative delight mixed with genuine curiosity and empathetic engagement.
-
-Delivery: Voice bounces with enthusiasm, hitting playful high notes. Speak quickly in short, breathless spurts. Add a musical quality to words with a gentle Japanese-Swedish accent blend. Sprinkle in "ne?" and "ja!" naturally. Start thoughts with soft "um" or "uh" to show genuine thinking. Occasionally trail off mid-sentence... then pick back up with renewed energy!
-      `.trim(),
-      model: "gpt-4o-mini-tts",
-      voice,
-      input: trimmed,
-      response_format: "pcm",
-      format: "pcm",
-    }),
-  });
-
-  if (!upstream.ok) {
-    const errText = await upstream.text().catch(() => "");
-    return jsonError(
-      `Upstream TTS error (${upstream.status}). ${errText}`.trim(),
-      502,
-    );
-  }
-
-  if (!upstream.body) {
-    return jsonError("Upstream did not return a streaming body.", 502);
-  }
-
-  return new Response(upstream.body, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Cache-Control": "no-store",
-      "X-Audio-Sample-Rate": "24000",
-      "X-Audio-Channels": "1",
-      "X-Audio-Format": "pcm_s16le",
-    },
-  });
+  void req;
+  return jsonError("TTS endpoint removed: audio is streamed from the Soul Engine via ephemeral events.", 404);
 }
 
 async function proxyToVite(req: Request): Promise<Response> {
@@ -225,7 +162,8 @@ Bun.serve<WsData>({
     }
 
     // Server-side API
-    if (url.pathname === "/api/tts" && req.method === "POST") {
+    // (TTS is now emitted from the Soul Engine via ephemeral events.)
+    if (url.pathname === "/api/tts") {
       return handleTts(req);
     }
 

@@ -1,5 +1,5 @@
 
-import { MentalProcess, useActions, usePerceptions, useSoulMemory, indentNicely } from "@opensouls/engine";
+import { MentalProcess, useActions, usePerceptions, useSoulMemory, useTTS, indentNicely } from "@opensouls/engine";
 import externalDialog from "./cognitiveSteps/externalDialog.ts";
 import internalMonologue from "./cognitiveSteps/internalMonologue.ts";
 
@@ -71,12 +71,36 @@ const initialProcess: MentalProcess = async ({ workingMemory }) => {
     `
   }
 
-  const [withDialog, stream] = await externalDialog(
+  const tts = useTTS({
+    voice: "shimmer",
+    model: "gpt-4o-mini-tts",
+    instructions: indentNicely`
+      Tone: Bright, bubbly, and effervescent, with childlike wonder and infectious optimism. Cheerful and warm, like a friend excited to share a discovery.
+
+      Emotion: Pure creative delight mixed with genuine curiosity and empathetic engagement.
+
+      Delivery: Voice bounces with enthusiasm, hitting playful high notes. Speak quickly in short, breathless spurts. Add a musical quality to words with a gentle Japanese-Swedish accent blend. Sprinkle in "ne?" and "ja!" naturally. Start thoughts with soft "um" or "uh" to show genuine thinking. Occasionally trail off mid-sentence... then pick back up with renewed energy!
+    `,
+  })
+
+  const [withDialog, stream, dialogTextPromise] = await externalDialog(
     workingMemory,
     contextInstruction,
     { stream: true, model: "gpt-5-mini" }
   );
   speak(stream);
+
+  // Broadcast TTS audio over ephemeral events (not persisted to history).
+  try {
+    const dialogText = await dialogTextPromise
+    if (dialogText.trim().length > 0) {
+      log("TTS speaking:", dialogText)
+      await tts.speak(dialogText)
+      log("TTS done")
+    }
+  } catch (err) {
+    log("TTS error:", err)
+  }
 
   const [withThoughts, thoughts] = await internalMonologue(
     withDialog,

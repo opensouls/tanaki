@@ -8,7 +8,7 @@ import { FloatingBubbles } from "@/components/FloatingBubbles";
 import { TanakiAudio, type TanakiAudioHandle } from "@/components/TanakiAudio";
 import { GLBModel, Scene } from "@/components/3d";
 import { useTanakiSoul } from "@/hooks/useTanakiSoul";
-import { useTTS } from "@/hooks/useTTS";
+import { base64ToUint8 } from "@/utils/base64";
 
 function readBoolEnv(value: unknown, fallback: boolean): boolean {
   if (typeof value !== "string") return fallback;
@@ -112,11 +112,10 @@ const materialOverride = [
 ] as const;
 
 function TanakiExperience() {
-  const { connected, messages, send, connectedUsers } = useTanakiSoul();
-  const { speak } = useTTS();
+  const { connected, messages, send, connectedUsers, soul } = useTanakiSoul();
   const audioRef = useRef<TanakiAudioHandle | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const lastSpokenIdRef = useRef<string | null>(null);
+  const activeTtsStreamIdRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [blend, setBlend] = useState(0);
   const unlockedOnceRef = useRef(false);
@@ -141,26 +140,64 @@ function TanakiExperience() {
     return connected ? "🟢" : "🔴";
   }, [connected]);
 
-  // When Tanaki says something new, stream TTS audio into the player.
+  // When Tanaki says something new, update aria-live text.
   useEffect(() => {
     const latest = [...messages].reverse().find((m) => m.role === "tanaki");
     if (!latest) return;
     if (lastSpokenIdRef.current === latest.id) return;
     lastSpokenIdRef.current = latest.id;
     setLiveText(latest.content);
+  }, [messages]);
 
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
+  // Listen for Soul Engine ephemeral audio events (useTTS).
+  useEffect(() => {
+    const onChunk = (evt: any) => {
+      console.log("TTS chunk:", evt);
+      const data = evt?.data as any;
+      if (!data || typeof data !== "object") return;
 
-    audioRef.current?.interrupt();
-    void speak(latest.content, {
-      signal: abortRef.current.signal,
-      onChunk: (chunk) => audioRef.current?.enqueuePcm16(chunk),
-    }).catch((err) => {
-      // Avoid crashing the UI if TTS fails.
-      console.error("TTS error:", err);
-    });
-  }, [messages, speak]);
+      const streamId = typeof data.streamId === "string" ? data.streamId : null;
+      const chunkBase64 = typeof data.chunkBase64 === "string" ? data.chunkBase64 : null;
+      if (!streamId || !chunkBase64) return;
+
+      // If a new stream starts, interrupt queued audio so it feels responsive.
+      if (activeTtsStreamIdRef.current !== streamId) {
+        activeTtsStreamIdRef.current = streamId;
+        audioRef.current?.interrupt();
+      }
+
+      try {
+        const bytes = base64ToUint8(chunkBase64);
+        audioRef.current?.enqueuePcm16(bytes);
+      } catch (err) {
+        console.error("Failed to decode/enqueue TTS chunk:", err);
+      }
+    };
+
+    const onComplete = (evt: any) => {
+      const data = evt?.data as any;
+      const streamId = typeof data?.streamId === "string" ? data.streamId : null;
+      if (!streamId) return;
+      if (activeTtsStreamIdRef.current === streamId) {
+        activeTtsStreamIdRef.current = null;
+      }
+    };
+
+    const onError = (evt: any) => {
+      const data = evt?.data as any;
+      const message = typeof data?.message === "string" ? data.message : "unknown error";
+      console.error("TTS error event:", message, evt);
+    };
+
+    soul.on("ephemeral:audio-chunk", onChunk);
+    soul.on("ephemeral:audio-complete", onComplete);
+    soul.on("ephemeral:audio-error", onError);
+    return () => {
+      soul.off("ephemeral:audio-chunk", onChunk);
+      soul.off("ephemeral:audio-complete", onComplete);
+      soul.off("ephemeral:audio-error", onError);
+    };
+  }, [soul]);
 
   // Measure the bottom overlay so bubbles can avoid it (mobile-friendly).
   useEffect(() => {
