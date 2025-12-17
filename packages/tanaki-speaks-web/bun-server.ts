@@ -75,6 +75,17 @@ function jsonError(message: string, status = 400) {
   });
 }
 
+// MIME types that Bun might not recognize correctly
+const MIME_OVERRIDES: Record<string, string> = {
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+};
+
+function getMimeType(filePath: string, bunFile: ReturnType<typeof Bun.file>): string {
+  const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
+  return MIME_OVERRIDES[ext] || bunFile.type || "application/octet-stream";
+}
+
 /**
  * Generate an ETag from file size and mtime.
  */
@@ -122,7 +133,7 @@ async function serveStaticFile(
 
       return new Response(gzFile, {
         headers: {
-          "Content-Type": Bun.file(filePath).type || "application/octet-stream",
+          "Content-Type": getMimeType(filePath, file),
           "Content-Length": gzFile.size.toString(),
           "Content-Encoding": "gzip",
           "Cache-Control": "public, max-age=604800",
@@ -136,6 +147,7 @@ async function serveStaticFile(
   // Serve uncompressed with Content-Length for progress tracking
   return new Response(file, {
     headers: {
+      "Content-Type": getMimeType(filePath, file),
       "Content-Length": file.size.toString(),
       "Cache-Control": "public, max-age=604800",
       "ETag": etag,
